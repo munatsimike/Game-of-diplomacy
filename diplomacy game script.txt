@@ -1,0 +1,57 @@
+-- function to remove quotes from strings
+REGISTER 'hdfs:///user/maria_dev/diplomacy/udf/my_udf.py' using jython as udf;
+
+-- to get 6 points------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+orders = LOAD '/user/maria_dev/diplomacy/orders.csv' USING PigStorage(',') 
+AS(game_id:chararray,unit_id:chararray,unit_order:chararray,location:chararray,target:chararray,target_dest:chararray,success:chararray,reason:chararray,turn_num:chararray);
+filtered_list  = FILTER orders BY target == '"Holland"';
+grouped_list = GROUP filtered_list BY (udf.remove_quotes(location), udf.remove_quotes(target));
+grouped_list = FOREACH grouped_list GENERATE FLATTEN(group) AS (location,target), COUNT($1);
+grouped_list = ORDER grouped_list BY $0;
+Dump grouped_list;
+
+--to get 7 points------------------------------------------------------------------------------------------------------------------------------------------------
+
+-- load players table
+players = LOAD '/user/maria_dev/diplomacy/players.csv' USING PigStorage(',') 
+AS(game_id:chararray,country:chararray,won:chararray,num_supply_centers:chararray,eliminated:chararray,start_turn:chararray,end_turn:chararray);
+
+filtered_list  = FILTER players BY won == '"1"';
+grouped_list = GROUP filtered_list BY udf.remove_quotes(country);
+grouped_list = FOREACH grouped_list GENERATE group AS country, COUNT(filtered_list) as won;
+grouped_list = ORDER grouped_list BY won DESC;
+Dump grouped_list;
+
+
+--- to get 8 points------------------------------------------------------------------------------------------
+
+-- load turns table
+games = LOAD '/user/maria_dev/diplomacy/games.csv' USING PigStorage(',') 
+AS(game_id:chararray,num_turns:chararray,num_players:chararray);
+--innner join players and games table
+players_games = JOIN players BY game_id, games BY game_id;
+--filter players that won
+filter_players_games  = FILTER players_games BY won == '"1"';
+filter_players_games = FOREACH filter_players_games GENERATE udf.remove_quotes(country) as country, (int)udf.remove_quotes(num_turns) as num_turns;
+ordered_players_turns = ORDER filter_players_games BY num_turns DESC;
+top_ten_countries = LIMIT ordered_players_turns 10;
+
+full_country_names = FOREACH top_ten_countries GENERATE (CASE country
+                                                 WHEN 'A' THEN 	'Austria'
+                                                 WHEN 'G' THEN 	'Germany'
+                                                 WHEN 'F' THEN 	'France'
+                                                 WHEN 'E' THEN	'England'
+                                                 WHEN 'I' THEN	'Italy'
+                                                 WHEN 'R' THEN	'Russia'
+                                                 WHEN 'T' THEN	'Turkey'
+                                                 END
+), num_turns;
+
+dump full_country_names;
+
+-- 9 points-------------------------------------------------------------------------------------
+
+full_country_names = FOREACH top_ten_countries GENERATE udf.country_full_name(country), num_turns;
+dump full_country_names;
+
